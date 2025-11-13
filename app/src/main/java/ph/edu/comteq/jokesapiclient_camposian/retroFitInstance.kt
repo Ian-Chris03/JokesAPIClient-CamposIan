@@ -2,11 +2,10 @@ package ph.edu.comteq.jokesapiclient_camposian
 
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import ph.edu.comteq.jokesapiclient_camposian.JokesAPIService
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
-object RetrofitInstance {
+object retroFitInstance {
     //base url
     private const val BASE_URL = "https://programmingwizards.tech/"
 

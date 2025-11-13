@@ -4,35 +4,18 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items // 👈 FIX: Import for LazyColumn items
-import androidx.compose.material.icons.Icons // 👈 FIX: Import for Material Icons
-import androidx.compose.material.icons.filled.Add // 👈 FIX: Import for Add Icon
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState // 👈 FIX: Import for collectAsState
-import androidx.compose.runtime.getValue // 👈 FIX: Imports for state delegation
-import androidx.compose.runtime.mutableStateOf // 👈 FIX: Correct mutableStateOf import
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ph.edu.comteq.jokesapiclient_camposian.ui.theme.JokesAPIClientCamposIanTheme
@@ -44,37 +27,107 @@ class MainActivity : ComponentActivity() {
         setContent {
             JokesAPIClientCamposIanTheme {
                 val jokesViewModel: JokesViewModel = viewModel()
-                // 👇 FIX: Use mutableStateOf for a single boolean value
-                var showDialog by remember { mutableStateOf(false) }
+                JokesApp(viewModel = jokesViewModel)
+            }
+        }
+    }
+}
 
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    floatingActionButton = {
-                        FloatingActionButton(
-                            onClick = { showDialog = true } // 👈 FIX: Set showDialog to true
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add, // 👈 FIX: Use imageVector
-                                contentDescription = "Add New Jokes"
-                            )
-                        }
+@Composable
+fun JokesApp(viewModel: JokesViewModel) {
+    val screenState by viewModel.screenState.collectAsState()
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        floatingActionButton = {
+            FloatingActionButton(onClick = { viewModel.onAddJokeClicked() }) {
+                Icon(Icons.Default.Add, contentDescription = "Add Joke")
+            }
+        }
+    ) { innerPadding ->
+        JokesScreen(
+            viewModel = viewModel,
+            modifier = Modifier.padding(innerPadding)
+        )
+
+        if (screenState.showAddDialog) {
+            AddJokeDialog(
+                onDismiss = { viewModel.onDialogDismiss() },
+                onConfirm = { viewModel.addJoke() },
+                dialogState = screenState.dialogState,
+                onSetupChanged = { viewModel.onDialogSetupChanged(it) },
+                onPunchlineChanged = { viewModel.onDialogPunchlineChanged(it) }
+            )
+        }
+
+        screenState.jokeToEdit?.let { joke ->
+            EditJokeDialog(
+                joke = joke,
+                onDismiss = { viewModel.onDialogDismiss() },
+                onConfirm = { viewModel.updateJoke() },
+                dialogState = screenState.dialogState,
+                onSetupChanged = { viewModel.onDialogSetupChanged(it) },
+                onPunchlineChanged = { viewModel.onDialogPunchlineChanged(it) }
+            )
+        }
+
+        screenState.jokeToDelete?.let { joke ->
+            AlertDialog(
+                onDismissRequest = { viewModel.onDialogDismiss() },
+                title = { Text("Delete Joke") },
+                text = { Text("Are you sure you want to delete this joke?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = { viewModel.deleteJoke() }
+                    ) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
                     }
-                ) { innerPadding ->
-                    JokesScreen(
-                        viewModel = jokesViewModel,
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.onDialogDismiss() }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+    }
+}
 
-                    // This composable will be displayed only when showDialog is true
-                    if (showDialog) {
-                        AddJokeDialog(
-                            onDismiss = { showDialog = false },
-                            onConfirm = { setup, punchline ->
-                                // jokesViewModel.addJoke(setup, punchline) // This function doesn't exist yet
-                                showDialog = false
-                            }
+@Composable
+fun JokesScreen(viewModel: JokesViewModel, modifier: Modifier = Modifier) {
+    val screenState by viewModel.screenState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.get_Jokes()
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        when (val state = screenState.jokesUiState) {
+            is JokesUIState.Idle -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(text = "No Jokes To Show")
+                }
+            }
+            is JokesUIState.Loading -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+            is JokesUIState.Success -> {
+                LazyColumn(
+                    contentPadding = PaddingValues(bottom = 80.dp) // Space for the FAB
+                ) {
+                    items(state.jokes, key = { it.id ?: it.hashCode() }) { joke ->
+                        JokeItem(
+                            joke = joke,
+                            viewModel = viewModel
                         )
                     }
+                }
+            }
+            is JokesUIState.Error -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(modifier = Modifier.padding(16.dp), text = state.message)
                 }
             }
         }
@@ -82,63 +135,35 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun JokesScreen(viewModel: JokesViewModel, modifier: Modifier = Modifier) {
-    // 👇 FIX: The 'by' keyword delegates state access, import was missing
-    val uiState by viewModel.uiState.collectAsState()
-
-    LaunchedEffect(Unit) {
-        viewModel.getJokes()
-    }
-
-    Column(modifier.fillMaxSize()) {
-        // 👇 FIX: Changed JokesUiState.idle to JokesUiState.Idle to match definition
-        when (val state = uiState) {
-            is JokesUiState.Idle -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(), // 👈 FIX: Use fillMaxSize to center properly
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Click the '+' button to fetch jokes!")
-                }
+fun JokeItem(joke: joke, viewModel: JokesViewModel) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = joke.setup)
+                Text(text = joke.punchline)
             }
-
-            is JokesUiState.Loading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
+            IconButton(onClick = { viewModel.onDeleteJokeClicked(joke) }) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete Joke",
+                    tint = MaterialTheme.colorScheme.error
+                )
             }
-
-            is JokesUiState.Success -> {
-                LazyColumn(modifier = Modifier.fillMaxSize()) { // 👈 FIX: Apply modifier
-                    // 👇 FIX: Define the 'joke' item to be used inside the block
-                    items(state.jokes) { joke ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp) // Added vertical padding
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(joke.setup, style = MaterialTheme.typography.bodyLarge)
-                                Text(joke.punchline, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                }
-            }
-
-            is JokesUiState.Error -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Error: ${state.message}",
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
+            IconButton(onClick = { viewModel.onEditJokeClicked(joke) }) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Edit Joke"
+                )
             }
         }
     }
@@ -147,30 +172,28 @@ fun JokesScreen(viewModel: JokesViewModel, modifier: Modifier = Modifier) {
 @Composable
 fun AddJokeDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit
+    onConfirm: () -> Unit,
+    dialogState: DialogState,
+    onSetupChanged: (String) -> Unit,
+    onPunchlineChanged: (String) -> Unit
 ) {
-    // 👇 FIX: Use mutableStateOf for simple String values
-    var setup by remember { mutableStateOf("") }
-    var punchline by remember { mutableStateOf("") }
-
     AlertDialog(
-        onDismissRequest = onDismiss, // 👈 FIX: Correct parameter name
+        onDismissRequest = onDismiss,
         title = { Text(text = "Add New Joke") },
         text = {
             Column {
                 OutlinedTextField(
-                    value = setup,
-                    onValueChange = { setup = it },
+                    value = dialogState.setup,
+                    onValueChange = onSetupChanged,
                     label = { Text("Setup") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 8.dp)
                 )
                 OutlinedTextField(
-                    // 👇 FIX: This field was incorrectly using the 'setup' state variable
-                    value = punchline,
-                    onValueChange = { punchline = it },
-                    label = { Text("Punchline") }, // Corrected spelling
+                    value = dialogState.punchline,
+                    onValueChange = onPunchlineChanged,
+                    label = { Text("Punchline") },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -178,19 +201,16 @@ fun AddJokeDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    // 👇 FIX: isNotBlank() is a function call
-                    if (setup.isNotBlank() && punchline.isNotBlank()) {
-                        onConfirm(setup, punchline)
+                    if (dialogState.setup.isNotBlank() && dialogState.punchline.isNotBlank()) {
+                        onConfirm()
                     }
                 },
-                // 👇 FIX: isNotBlank() is a function call
-                enabled = setup.isNotBlank() && punchline.isNotBlank()
+                enabled = dialogState.setup.isNotBlank() && dialogState.punchline.isNotBlank()
             ) {
-                Text("Add")
+                Text("Confirm")
             }
         },
         dismissButton = {
-            // 👇 FIX: Corrected onClick lambda and parameter name
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
@@ -198,4 +218,52 @@ fun AddJokeDialog(
     )
 }
 
-
+@Composable
+fun EditJokeDialog(
+    joke: joke,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    dialogState: DialogState,
+    onSetupChanged: (String) -> Unit,
+    onPunchlineChanged: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "Edit Joke") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = dialogState.setup,
+                    onValueChange = onSetupChanged,
+                    label = { Text("Setup") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                )
+                OutlinedTextField(
+                    value = dialogState.punchline,
+                    onValueChange = onPunchlineChanged,
+                    label = { Text("Punchline") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (dialogState.setup.isNotBlank() && dialogState.punchline.isNotBlank()) {
+                        onConfirm()
+                    }
+                },
+                enabled = dialogState.setup.isNotBlank() && dialogState.punchline.isNotBlank()
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
